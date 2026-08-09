@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatch — Threat Monitor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #eef1f8;
+    --panel:    #ffffff;
+    --border:   #dde2ee;
+    --green:    #12a454;
+    --red:      #e0334f;
+    --yellow:   #d98a12;
+    --blue:     #2f7fe0;
+    --dim:      #8791a8;
+    --text:     #2a3142;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .logo { font-family: var(--mono); font-size: 1.1rem; color: var(--green); letter-spacing: 2px; }
+  .logo span { color: var(--dim); }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    font-size: .78rem; font-family: var(--mono); color: var(--green);
+  }
+  .pulse {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .header-right { display: flex; align-items: center; gap: 20px; }
+  .clock { font-family: var(--mono); font-size: .82rem; color: var(--dim); }
+
+  /* ── Stat bar ── */
+  .statbar {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px; background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat {
+    background: var(--panel); padding: 14px 20px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .stat-label { font-size: .68rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--dim); }
+  .stat-value { font-family: var(--mono); font-size: 1.5rem; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.red   { color: var(--red);   }
+  .stat-value.yellow{ color: var(--yellow);}
+  .stat-value.blue  { color: var(--blue);  }
+
+  /* ── Main layout ── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: auto 1fr;
+    flex: 1;
+    gap: 1px; background: var(--border);
+  }
+
+  /* ── Traffic canvas ── */
+  .traffic-panel {
+    background: var(--panel); padding: 20px;
+    grid-row: 1; grid-column: 1;
+  }
+  .panel-title {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--dim); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .panel-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  canvas#trafficChart { width: 100%; height: 120px; display: block; }
+
+  /* ── Packet feed ── */
+  .feed-panel {
+    background: var(--panel); padding: 20px;
+    grid-row: 2; grid-column: 1;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .feed-controls {
+    display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .filter-btn {
+    font-family: var(--mono); font-size: .72rem; padding: 5px 12px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--dim); cursor: pointer; border-radius: 2px;
+    transition: all .15s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--green); color: var(--green);
+  }
+  .filter-btn.threat.active { border-color: var(--red); color: var(--red); }
+
+  .feed {
+    flex: 1; overflow-y: auto; font-family: var(--mono);
+    font-size: .73rem; line-height: 1.7;
+  }
+  .feed::-webkit-scrollbar { width: 4px; }
+  .feed::-webkit-scrollbar-track { background: transparent; }
+  .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .packet {
+    display: grid;
+    grid-template-columns: 90px 130px 130px 60px 1fr 60px;
+    gap: 0 12px; padding: 4px 0;
+    border-bottom: 1px solid #eef1f8;
+    align-items: center;
+  }
+  .packet:hover { background: #f4f7fd; }
+  .packet.threat { background: #fdeef0; }
+  .packet .time   { color: var(--dim); }
+  .packet .src    { color: var(--blue); }
+  .packet .dst    { color: var(--text); }
+  .packet .proto  { color: var(--yellow); }
+  .packet .info   { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .packet .badge  {
+    font-size: .65rem; padding: 2px 6px; border-radius: 2px; text-align: center;
+  }
+  .badge.ok     { color: var(--green); border: 1px solid #bfe8d2; background: #f0fbf5; }
+  .badge.warn   { color: var(--yellow); border: 1px solid #f2ddb0; background: #fdf7ec; }
+  .badge.danger { color: #ffffff;   border: 1px solid var(--red); background: var(--red); }
+
+  .feed-header {
+    display: grid;
+    grid-template-columns: 90px 130px 130px 60px 1fr 60px;
+    gap: 0 12px; padding-bottom: 8px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: .63rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--dim);
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--panel);
+    grid-row: 1 / 3; grid-column: 2;
+    padding: 20px; display: flex; flex-direction: column; gap: 24px;
+    overflow-y: auto;
+  }
+
+  /* Threat list */
+  .threat-item {
+    border-left: 2px solid var(--red);
+    padding: 10px 12px; background: #fdeef0;
+    border-radius: 0 3px 3px 0; margin-bottom: 8px;
+  }
+  .threat-item.medium { border-color: var(--yellow); background: #fdf6e8; }
+  .threat-type { font-size: .72rem; color: var(--red); font-family: var(--mono); margin-bottom: 4px; }
+  .threat-item.medium .threat-type { color: var(--yellow); }
+  .threat-src { font-size: .7rem; color: var(--text); }
+  .threat-time { font-size: .65rem; color: var(--dim); font-family: var(--mono); margin-top: 3px; }
+
+  /* Protocol breakdown */
+  .proto-bar { margin-bottom: 8px; }
+  .proto-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .proto-name { font-family: var(--mono); font-size: .72rem; width: 50px; color: var(--text); }
+  .proto-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .proto-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
+  .proto-pct  { font-family: var(--mono); font-size: .68rem; color: var(--dim); width: 36px; text-align: right; }
+
+  /* Geo block */
+  .geo-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    font-size: .73rem;
+  }
+  .geo-flag { font-size: 1rem; margin-right: 8px; }
+  .geo-country { color: var(--text); }
+  .geo-count { font-family: var(--mono); color: var(--dim); }
+  .geo-bar-wrap { width: 60px; height: 4px; background: var(--border); border-radius: 2px; }
+  .geo-bar { height: 4px; background: var(--blue); border-radius: 2px; }
+
+  /* Alert banner */
+  .alert-banner {
+    display: none; position: fixed; top: 60px; left: 50%;
+    transform: translateX(-50%);
+    background: #fff0f2; border: 1px solid var(--red); color: var(--red);
+    font-family: var(--mono); font-size: .8rem; padding: 10px 24px;
+    border-radius: 3px; z-index: 100; text-align: center;
+    animation: slideDown .3s ease;
+    box-shadow: 0 4px 20px rgba(224,51,79,.18);
+  }
+  @keyframes slideDown { from{transform:translateX(-50%) translateY(-10px);opacity:0} to{transform:translateX(-50%) translateY(0);opacity:1} }
+
+  /* Controls */
+  .ctrl-row { display: flex; gap: 10px; }
+  .btn {
+    font-family: var(--mono); font-size: .75rem; padding: 8px 16px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text); cursor: pointer; border-radius: 2px;
+    transition: all .15s; flex: 1; text-align: center;
+  }
+  .btn:hover { border-color: var(--green); color: var(--green); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn.active { background: #eafbf2; border-color: var(--green); color: var(--green); }
+</style>
+</head>
+<body>
+
+<div class="alert-banner" id="alertBanner">⚠ THREAT DETECTED — Suspicious activity flagged</div>
+
+<header>
+  <div class="logo">NET<span>/</span>WATCH <span style="font-size:.7rem;color:var(--dim)">v2.4.1</span></div>
+  <div class="status-pill"><div class="pulse"></div> MONITORING ACTIVE</div>
+  <div class="header-right">
+    <div class="clock" id="clock"></div>
+  </div>
+</header>
+
+<div class="statbar">
+  <div class="stat">
+    <div class="stat-label">Packets / sec</div>
+    <div class="stat-value green" id="pps">0</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Threats detected</div>
+    <div class="stat-value red" id="threatCount">0</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Bandwidth</div>
+    <div class="stat-value blue" id="bandwidth">0 Mbps</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Blocked IPs</div>
+    <div class="stat-value yellow" id="blocked">0</div>
+  </div>
+</div>
+
+<main>
+  <!-- Traffic chart -->
+  <div class="traffic-panel">
+    <div class="panel-title">Live Traffic</div>
+    <canvas id="trafficChart" height="120"></canvas>
+  </div>
+
+  <!-- Packet feed -->
+  <div class="feed-panel">
+    <div class="panel-title">Packet Feed</div>
+    <div class="feed-controls">
+      <button class="filter-btn active" id="filterAll" onclick="setFilter('all')">ALL</button>
+      <button class="filter-btn" onclick="setFilter('TCP')">TCP</button>
+      <button class="filter-btn" onclick="setFilter('UDP')">UDP</button>
+      <button class="filter-btn" onclick="setFilter('ICMP')">ICMP</button>
+      <button class="filter-btn threat" id="filterThreat" onclick="setFilter('threat')">THREATS ONLY</button>
+    </div>
+    <div class="feed-header">
+      <span>Time</span><span>Source IP</span><span>Dest IP</span>
+      <span>Proto</span><span>Info</span><span>Status</span>
+    </div>
+    <div class="feed" id="feed"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <div>
+      <div class="panel-title">Controls</div>
+      <div class="ctrl-row">
+        <button class="btn active" id="toggleBtn" onclick="toggleMonitor()">⏸ Pause</button>
+        <button class="btn danger" onclick="clearFeed()">✕ Clear</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel-title">Active Threats</div>
+      <div id="threatList"><div style="font-size:.72rem;color:var(--dim);font-family:var(--mono)">No threats detected</div></div>
+    </div>
+
+    <div>
+      <div class="panel-title">Protocol Mix</div>
+      <div class="proto-bar" id="protoBar">
+        <div class="proto-row"><span class="proto-name">TCP</span><div class="proto-track"><div class="proto-fill" id="tcpFill" style="width:0;background:var(--blue)"></div></div><span class="proto-pct" id="tcpPct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">UDP</span><div class="proto-track"><div class="proto-fill" id="udpFill" style="width:0;background:var(--green)"></div></div><span class="proto-pct" id="udpPct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">ICMP</span><div class="proto-track"><div class="proto-fill" id="icmpFill" style="width:0;background:var(--yellow)"></div></div><span class="proto-pct" id="icmpPct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">OTHER</span><div class="proto-track"><div class="proto-fill" id="otherFill" style="width:0;background:var(--dim)"></div></div><span class="proto-pct" id="otherPct">0%</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel-title">Top Source Countries</div>
+      <div id="geoList"></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let running = true;
+let filter = 'all';
+let packets = [];
+let threats = [];
+let totalPackets = 0;
+let threatCount = 0;
+let blockedIPs = new Set();
+let protoCounts = {TCP:0, UDP:0, ICMP:0, OTHER:0};
+let geoCounts = {};
+let chartData = new Array(60).fill(0);
+let lastAlertTime = 0;
+
+// ── Fake Data Generators ───────────────────────────────────────────────────
+const IPS = ['192.168.1.','10.0.0.','172.16.0.','45.33.','198.51.','203.0.113.','185.220.','194.165.'];
+const COUNTRIES = [
+  {flag:'🇺🇸',name:'United States'},{flag:'🇨🇳',name:'China'},
+  {flag:'🇷🇺',name:'Russia'},{flag:'🇩🇪',name:'Germany'},
+  {flag:'🇬🇧',name:'United Kingdom'},{flag:'🇧🇷',name:'Brazil'},
+  {flag:'🇰🇷',name:'South Korea'},{flag:'🇮🇳',name:'India'}
+];
+const GEO_MAP = {
+  '192.168':'🇺🇸 United States','10.0':'🇺🇸 United States',
+  '172.16':'🇩🇪 Germany','45.33':'🇷🇺 Russia',
+  '198.51':'🇬🇧 United Kingdom','203.0':'🇨🇳 China',
+  '185.220':'🇷🇺 Russia','194.165':'🇰🇷 South Korea'
+};
+const PROTOS =
